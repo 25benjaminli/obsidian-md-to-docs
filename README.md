@@ -1,6 +1,6 @@
-## MD to Docs
+## Obsidian MD to Docs
 
-Converts a markdown file to a new Google Doc. LaTeX is normalized to `$$...$$` (compatible with the [Auto-Latex Equations](https://workspace.google.com/marketplace/app/auto_latex_equations/850293439076) extension). Images are embedded inline.
+Converts a markdown file to a new Google Doc (specifically, markdown with Obsidian formatting - e.g. for images). LaTeX is normalized to `$$...$$` (compatible with the [Auto-Latex Equations](https://workspace.google.com/marketplace/app/auto_latex_equations/850293439076) extension). Images are embedded inline. I find this useful as I write many of my notes in Obsidian and occasionally need to share them with collaborators. 
 
 ### Setup
 The setup is a bit annoying, but for subsequent use you only have to run a single command to produce your google doc. 
@@ -25,3 +25,6 @@ python main.py <md_path> [--title <title>] [--media-dir <path>] [--save-docx <pa
 - `--save-docx` — save the intermediate `.docx` to this path for inspection
 
 On first run, a browser window will open to authorize access. The token is cached in `token.json` for subsequent runs. After running, open the Google Doc and run the Auto-Latex Equations extension to render math.
+
+## License
+MIT
