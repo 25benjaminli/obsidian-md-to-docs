@@ -30,6 +30,13 @@ def get_credentials():
     return creds
 
 
+def normalize_lists(md_content):
+    # Ensure blank line before each list item not already preceded by one
+    md_content = re.sub(r'([^\n])\n(\d+\. )', r'\1\n\n\2', md_content)
+    md_content = re.sub(r'([^\n])\n(- )', r'\1\n\n\2', md_content)
+    return md_content
+
+
 def normalize_obsidian_images(md_content):
     # ![[filename.png|width]] or ![[filename.png]] → ![](filename.png)
     return re.sub(r'!\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]', r'![](\1)', md_content)
@@ -58,6 +65,7 @@ def md_to_docx(md_path, media_dir, output_path):
         content = f.read()
 
     content = normalize_obsidian_images(content)
+    content = normalize_lists(content)
     content = normalize_latex(content)
 
     tmp_md = tmp_filter = None
@@ -104,6 +112,63 @@ def upload_docx_as_gdoc(drive_service, docx_path, title):
     return doc['id'], doc['webViewLink']
 
 
+HEADING_SIZES = {
+    'HEADING_1': 20,
+    'HEADING_2': 16,
+    'HEADING_3': 14,
+    'HEADING_4': 12,
+    'HEADING_5': 11,
+    'HEADING_6': 11,
+}
+
+
+def reset_fonts(docs_service, doc_id, font='Roboto', body_size=12):
+    doc = docs_service.documents().get(documentId=doc_id).execute()
+    body_content = doc.get('body', {}).get('content', [])
+    if not body_content:
+        return
+    end_index = body_content[-1].get('endIndex', 1)
+    if end_index <= 1:
+        return
+
+    requests = [{
+        'updateTextStyle': {
+            'range': {'startIndex': 1, 'endIndex': end_index - 1},
+            'textStyle': {
+                'weightedFontFamily': {'fontFamily': font},
+                'fontSize': {'magnitude': body_size, 'unit': 'PT'},
+            },
+            'fields': 'weightedFontFamily,fontSize',
+        }
+    }]
+
+    for elem in body_content:
+        paragraph = elem.get('paragraph')
+        if not paragraph:
+            continue
+        named_style = paragraph.get('paragraphStyle', {}).get('namedStyleType', '')
+        size = HEADING_SIZES.get(named_style)
+        if size is None:
+            continue
+        start = elem.get('startIndex', 0)
+        end = elem.get('endIndex', 0)
+        if end <= start:
+            continue
+        requests.append({
+            'updateTextStyle': {
+                'range': {'startIndex': start, 'endIndex': end},
+                'textStyle': {'fontSize': {'magnitude': size, 'unit': 'PT'}},
+                'fields': 'fontSize',
+            }
+        })
+
+    docs_service.documents().batchUpdate(
+        documentId=doc_id,
+        body={'requests': requests},
+    ).execute()
+
+
+
 def main():
     parser = argparse.ArgumentParser(description='Convert a markdown file to a new Google Doc.')
     parser.add_argument('md_path', help='Path to the markdown file')
@@ -116,6 +181,7 @@ def main():
 
     creds = get_credentials()
     drive_service = build('drive', 'v3', credentials=creds)
+    docs_service = build('docs', 'v1', credentials=creds)
 
     if args.save_docx:
         docx_path = args.save_docx
@@ -134,7 +200,11 @@ def main():
             print(f"Saved docx to {docx_path}")
 
         print("Uploading to Google Drive...")
-        _, url = upload_docx_as_gdoc(drive_service, docx_path, title)
+        doc_id, url = upload_docx_as_gdoc(drive_service, docx_path, title)
+
+        print("Resetting fonts...")
+        reset_fonts(docs_service, doc_id)
+
         print(f"Created: {url}")
     finally:
         if cleanup and os.path.exists(docx_path):
